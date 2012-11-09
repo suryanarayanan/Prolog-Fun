@@ -1,0 +1,288 @@
+/* 
+Author:   Suryanarayanan Balasubramanian
+*/
+
+:-import append/3 from basics.
+:-import scan_file/2 from scanner.
+:-import append/3 from basics.
+:-table declaration_sequence/3.
+:-table identifier_list/3.
+:-table statement_sequence/3.
+:-table simple_expression/3.
+:-table term/3.
+:-table variable_declaration_list/3.
+
+/* extracted from homework 6 */
+
+/* DCG for the given language */
+
+/* module body */
+module(module(ident(Name), BlockAST)) --> ['MODULE'],[ident(Name)], [';'], block(BlockAST), [ident(Name)],['.'].
+block(block(IdentifierListAST,StmtListAST)) --> declaration_sequence(IdentifierListAST), block_body(StmtListAST).
+
+/* block body */
+block_body([]) --> ['END'].
+block_body(X) --> ['BEGIN'],statement_sequence(X),['END'].
+
+/* variable declarations */
+declaration_sequence(X) --> declaration_sequence(A), declaration(B), {append(A,B,X)}.
+declaration_sequence([]) --> [].
+declaration(X) --> ['VAR'], variable_declaration_list(X),[';'].
+
+variable_declaration_list(X) --> variable_declaration(X).
+variable_declaration_list(X) --> variable_declaration(A), variable_declaration_list(B), {append(A,B,X)}.
+variable_declaration(X) --> identifier_list(X),[':'], type.
+
+/* list of identifiers */
+
+identifier_list([ident(X)]) --> [ident(X)].
+identifier_list([ident(X)|Y]) --> [ident(X)],[','],identifier_list(Y).
+
+/* set of statements */
+statement_sequence([X|Y]) --> statement(X),statement_sequence(Y).
+statement_sequence([]) --> [].
+
+statement(X) --> assignment_statement(X),[';'].
+statement(X) --> if_statement(X),[';'].
+statement(X) --> while_statement(X), [';'].
+statement(X) --> print_statement(X), [';'].
+
+/* different kinds of statements */
+assignment_statement(assign(ident(Var),ExprAST)) --> [ident(Var)],[':'],['='],expression(ExprAST).
+if_statement(if(ExprAST,ThenStmtAST,ElseStmtAST)) --> ['IF'],expression(ExprAST),['THEN'],statement_sequence(ThenStmtAST),['ELSE'],statement_sequence(ElseStmtAST),['END'].
+while_statement(while(ExprAST,DoStmtAST)) --> ['WHILE'], expression(ExprAST), ['DO'], statement_sequence(DoStmtAST), ['END'].
+print_statement(print(ExtrAST)) --> ['PRINT'], ['('], expression(ExtrAST), [')'].
+
+type --> ['INT'].
+
+expression(Newx) --> simple_expression(X),relop(Y),simple_expression(Z),{Newx=..[Y,X,Z]}.
+expression(X) --> simple_expression(X).
+
+/* operators */
+relop(<) --> ['<'].
+relop(>) --> ['>'].
+relop(=) --> ['='].
+
+simple_expression(Newx) --> simple_expression(X), addop(Y), term(Z),{Newx=..[Y,X,Z]}.
+simple_expression(X) --> term(X).
+
+addop(+) --> ['+'].
+addop(-) --> ['-'].
+term(Newx) --> term(X),mulop(Y),primary(Z),{Newx=..[Y,X,Z]}.
+term(X) --> primary(X).
+mulop(*) --> ['*'].
+mulop(/) --> ['/'].
+
+primary(ident(X)) --> [ident(X)].
+primary(int(X)) --> [int(X)].
+primary(X) --> ['('],simple_expression(X),[')'].
+
+/* end of homework 6 */
+
+/* begin howmework 7 */
+
+/* to receive the value of a variable from the list of variables */
+val(X,[X=Y|_T],Y).
+val(X,[S1=_Y|T],R) :- S1 \= X,val(X,T,R).
+
+/* delete the first occurance of a variable */ 
+/* This is useful if we want to update the value of variable in the list. We simply delete the old and add the new value */
+delete(X,[X=_|Li],Lo) :-
+  Li = Lo,!.
+
+delete(X,[Fi|Li],[Fo|Lo]) :-
+  Fi = Fo,
+  delete(X,Li,Lo).
+
+/* predicates to evaluate simple expressions */
+
+/* primary */
+eval(ident(X), StateIn, Z) :-
+  val(X, StateIn, Z).                 
+eval(int(X), _StateIn, X).
+
+/* Arithmetic operations */
+eval(+(X,Y), StateIn, Val) :-
+  eval(X, StateIn, A),
+  eval(Y, StateIn, B),
+  Val is A+B.
+
+eval(*(X,Y), StateIn, Val) :-
+  eval(X, StateIn, A),
+  eval(Y, StateIn, B),
+  Val is A*B.             
+
+eval(-(X,Y), StateIn, Val) :-
+  eval(X, StateIn, A),
+  eval(Y, StateIn, B),
+  Val is A-B.
+
+eval(/(X,Y), StateIn, Val) :-
+  eval(X, StateIn, A),
+  eval(Y, StateIn, B),
+  Val is A//B.             
+
+/* relaional operators */
+eval(<(X,Y), StateIn, Val) :-
+  eval(X, StateIn, A),
+  eval(Y, StateIn, B),
+  (A < B
+  -> Val = true
+  ;  Val = false
+  ).             
+
+eval(>(X,Y), StateIn, Val) :-
+  eval(X, StateIn, A),
+  eval(Y, StateIn, B),
+  (A > B
+  -> Val = true
+  ;  Val = false
+  ).             
+
+eval(=(X,Y), StateIn, Val) :-
+  eval(X, StateIn, A),
+  eval(Y, StateIn, B),
+  (A = B
+  -> Val = true
+  ;  Val = false
+  ).
+
+assignment([], []).
+assignment([ident(Head)|Stmt], [Head=0|StateIn]) :-
+  assignment(Stmt, StateIn).                               
+                           
+
+/* Main entry point. First, StateInit is populated with variables. Then we call evalList which evaluates every statement from the Body List */
+interpM3(module(ident(_X), block(Decl, Body)), _StateIn, StateOut) :-
+  assignment(Decl, StateInit),
+  evalList(Body,StateInit, StateOut).
+
+/* evaluating assignement statement */
+interpM3(assign(ident(X),Y), StateIn, StateOut) :-
+  eval(Y, StateIn, Out),
+  delete(X, StateIn, TempState),
+  append([X=Out], TempState, StateOut).
+
+/* evaluating if-then-else statement */
+interpM3(if(X,Then,Else), StateIn, StateOut) :-
+  eval(X, StateIn, Out),
+  (Out = true
+  -> evalList(Then, StateIn, StateOut)
+  ;  evalList(Else, StateIn, StateOut)
+  ).
+
+/* evaluating print statement */
+interpM3(print(X), StateIn, StateOut) :-
+  eval(X, StateIn, Out),
+  writeln(Out),
+  StateOut = StateIn.
+
+/* evaluating while statement */
+interpM3(while(X,Do), StateIn, StateOut) :-
+  eval(X, StateIn, Temp),
+  (Temp = true
+  -> evalList(Do, StateIn, Out),
+     interpM3(while(X,Do), Out, StateOut)
+  ;  StateOut = StateIn
+  ).
+
+/* evaluate helper which takes in a list of statements and evaluates */
+evalList([],StateIn, StateOut) :-
+  StateIn = StateOut.
+
+evalList([Head|Rest], StateIn, StateOut) :-
+  interpM3(Head, StateIn, Out),
+  evalList(Rest, Out, StateOut).
+
+interp_file(ProgramFile,FinalState) :-
+      scan_file(ProgramFile,Length),
+      module(AST,0,Length),
+      interpM3(AST,[],FinalState).
+
+/* Test runs :
+1.
+MODULE Main;
+BEGIN
+  PRINT(1);
+END Main.
+
+ ?- interp_file('./modula/asg6test1.m3', T).
+1
+T = [];
+no
+
+2.
+MODULE Main;
+VAR x,y :INT;
+BEGIN
+ x := 3;
+ PRINT(x);
+ PRINT(y);
+ y := x;
+ PRINT(y);
+END Main.
+
+?- interp_file('./modula/asg6test2.m3', T).
+3
+0
+3
+T = [y = 3,x = 3];
+no
+
+3.
+MODULE Main;
+ VAR x :INT;
+BEGIN
+  x := 10;
+  IF x > 8 THEN
+     x := 3;
+  ELSE
+     x := 6;
+  END;
+  PRINT(x);
+END Main.
+
+interp_file('./modula/asg6test3.m3', T).
+3
+T = [x = 3];
+no
+
+4.
+MODULE Main;
+  VAR x,y,exp :INT;
+BEGIN
+  x := 6;
+  y := 2;
+  exp := 1;
+  WHILE x>0 DO
+    exp := exp * y;
+    x := x-1;
+  END;
+  PRINT(exp);
+END Main.
+
+?- interp_file('./modula/asg6test4.m3', T).
+64
+T = [x = 0,exp = 64,y = 2];
+
+5.
+MODULE Factorial;
+  VAR x, fact: INT;
+BEGIN
+  x := 6;
+  PRINT(x);
+  fact := 1;
+  WHILE x > 0 DO 
+    fact := fact * x;
+    x := x-1;
+  END;
+  PRINT(fact);
+END Factorial.
+
+| ?- interp_file('./modula/asg6test5.m3', T).
+6
+720
+T = [x = 0,fact = 720];
+no
+
+*/

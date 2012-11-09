@@ -1,0 +1,199 @@
+/*
+       Author: Suryanarayanan Balasubramanian
+*/
+
+:- import append/3, member/2 from basics.
+
+/* 1.First order logic */
+
+/* Elements in our domain */
+
+dom(john_jones).
+dom(mary_smith).
+dom(bill_rogers).
+dom(jane_doe).
+
+/* binary predicates to represent relations */
+
+relation(man, [[john_jones], [bill_rogers]]).
+relation(woman, [[mary_smith], [jane_doe]]).
+relation(loves, [[john_jones, mary_smith], [mary_smith, john_jones], [bill_rogers, jane_doe]]).
+
+/* predicate to represent function symbol spouse and corresponding args */
+
+function(spouse,[john_jones], mary_smith).
+function(spouse,[mary_smith], john_jones).
+function(spouse,[bill_rogers], jane_doe).
+function(spouse,[jane_doe], bill_rogers).
+
+/* 2. First order formulae - English sentences */
+
+/*
+loves('John', 'Mary').
+loves('Bill', 'Jane') /\ not(loves('Jane', 'Bill')) /\ loves('Jane', 'John').
+exists(x, man(x) /\ loves('Mary',x)).
+not(loves('Jane', spouse('Jane'))).
+forall(x, (man(x) -> loves(x, spouse(x)))).
+not(forall(x,(woman(x) -> loves(x, spouse(x))))).
+forall(x, (man(x) -> exists(y, woman(y) /\ loves(x,y)))).
+exists(x, man(x) /\ forall(y, (woman(y) -> loves(y,x)))).
+*/
+
+
+/* 3. Mean formula */
+
+/* mapping constant symbols to objects in our world */
+
+function('Mary', [], mary_smith).
+function('John', [], john_jones).
+function('Bill', [], bill_rogers).
+function('Jane', [], jane_doe).
+
+
+mean_term(X,VA,Obj) :-		% variable
+	is_variable(X),		% defined below
+	member(X=Obj0,VA),
+	Obj=Obj0.
+
+mean_term(Term,VA,Obj) :-	% not variable (constant or function)
+	\+is_variable(Term),	% \+ is not so this checks that is_variable(Term) fails.
+	Term =.. [Fun|Args],	% split Term into [Root|Children]
+	mean_terms(Args,VA,Objs),  % find meanings of Args
+	function(Fun,Objs,Obj).
+
+%% provide meanings of a list of terms, as a list of objects
+mean_terms([],_,[]).
+mean_terms([Arg|Args],VA,[Obj|Objs]) :-
+	mean_term(Arg,VA,Obj),
+	mean_terms(Args,VA,Objs).
+
+%% provide meanings of a formula
+
+/* My implementation for atomic formulae.
+If it is not a complex formula, we split the function name, arguments.
+mean_terms looks up in the VA and gives 'Output' as list of objects.
+I Look up in the relation and see whether the list of objects is a member,
+If so, Truth value is true else it is false.
+*/
+
+mean_fmla(Fmla,VA,TV) :-
+	\+ complex_logical_fmla(Fmla),
+	Fmla =.. [P|Args],
+    (mean_terms(Args, VA, Output),
+    relation(P, Out)
+    -> (member(Output, Out)
+       -> TV = true,!
+       ; TV = false
+       )    
+    ;TV = false
+    ).
+
+mean_fmla(Fmla1\/Fmla2,VA,TV) :-
+	mean_fmla(Fmla1,VA,TV1),
+	mean_fmla(Fmla2,VA,TV2),
+	\/(TV1,TV2,TV).		% the 'or' truth table
+
+mean_fmla(Fmla1/\Fmla2,VA,TV) :-
+	mean_fmla(Fmla1,VA,TV1),
+	mean_fmla(Fmla2,VA,TV2),
+	/\(TV1,TV2,TV).		% the 'and' truth table
+
+mean_fmla((Fmla1->Fmla2),VA,TV) :-  % note the extra parens, due to precedence of ->
+	mean_fmla(not(Fmla1)\/Fmla2,VA,TV). % handle 'if' for fun
+mean_fmla(not(Fmla),VA,TV) :-
+	mean_fmla(Fmla,VA,TV1),
+	not(TV1,TV).		% truth table for not
+
+
+/* My implementation for complex logical formula starts here */
+/* If mean_fmla_sub returns true, The given input formula has a truth value of true. Else TV is false */ 
+
+mean_fmla(exists(V,Fmla),VA,TV) :-
+   (mean_fmla_sub(exists(V,Fmla),VA)
+   ->TV = true,!
+    ;TV = false
+   ).
+                           
+mean_fmla(forall(V,Fmla),VA,TV) :-
+	mean_fmla(not(exists(V,not(Fmla))),VA,TV).
+
+/* I try to assign each element from the domain and append it to the VA. Then
+calling mean_fmla to evaluate the formula with the new variable assignment 
+Finally looking to see whether any on of assignment succeeds.
+*/
+
+mean_fmla_sub(exists(V,Fmla),VA) :-
+    dom(X),
+    Temp = [V '=' X],
+    append(Temp, VA, Finva),
+    mean_fmla(Fmla, Finva, TV),
+    TV = true.
+
+%% is a structured logical formula (i.e., not an atomic formula)
+complex_logical_fmla(_\/_).
+complex_logical_fmla(_/\_).
+complex_logical_fmla((_->_)). % extra parens required due to precedence
+complex_logical_fmla(not(_)).
+complex_logical_fmla(forall(_,_)).
+complex_logical_fmla(exists(_,_)).
+
+%% "and" truth table
+/\(true,true,true).
+/\(true,false,false).
+/\(false,true,false).
+/\(false,false,false).
+
+%% "or" truth table
+\/(true,true,true).
+\/(true,false,true).
+\/(false,true,true).
+\/(false,false,false).
+
+%% "not" truth table
+not(true,false).
+not(false,true).
+
+%% test if a first-order logical variable 
+is_variable(X) :-
+    atom(X),
+    atom_codes(X,[First|Rest]),
+    (First =:= 0'x' ; First =:= 0'y' ; First =:= 0'z'),
+    all_digits(Rest).
+
+all_digits([]).
+all_digits([D|Ds]) :- D >= 0'0', D =< 0'9', all_digits(Ds).
+
+/* Test run for 3
+
+mean_fmla(loves('John', 'Mary'),[],TV).
+TV = true;
+no
+
+mean_fmla(exists(x, man(x) /\ loves('Mary',x)),[],TV).
+TV = true;
+no
+
+mean_fmla(forall(x1,exists(y2,loves(x1,y2))),[],TV).
+TV = false;
+no
+
+mean_fmla(forall(x1,not(man(x1))\/exists(y,woman(y)/\loves(x1,y))),[],TV).
+TV = true;
+no
+
+mean_fmla(forall(x,loves(x,spouse(x))), [], TV).
+TV = false;
+no
+
+mean_fmla(exists(x, man(x) /\ loves(x, y)), [y = mary_smith], TV).
+TV = true;
+no
+
+mean_fmla(exists(x, man(x) /\ forall(y, (woman(y) -> loves(y,x)))),[],TV).
+TV = false;
+no
+
+mean_fmla(forall(x, (man(x) -> exists(y, woman(y) /\ loves(x,y)))),[],TV).
+TV = true;
+no
+*/

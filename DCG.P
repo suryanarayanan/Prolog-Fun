@@ -1,0 +1,372 @@
+/* 1. DCG */
+
+/*
+Logic behind the DCG.
+
+A sentence S should be a noun phrase + verb phrase. For.e.g A man walks.
+
+A noun phrase could also be a prepositional phrase. For.e.g  The man in the park.
+
+When noun phrases are qualified by preposition, it introduces ambiguity.
+For e.g A man in the park with telescope. It can be split at two places.
+ 
+       *  split at 'in' which leads to "A man + park with telescope". 
+       *  split at 'with', it leads to "A man in the park  +  telescope".
+
+When verb phrases are qualified by preposition, it introduces ambiguity.
+For e.g A man walks in the park with telescope. It can be split at two places.
+ 
+       *  split at 'in' which leads to "A man walks" + "the park with telescope"       
+       *  split at 'with' which leads to "A man walks in the park" + "telescope".
+       In earlier sentence park has telescope, in later man has telescope. 
+*/
+
+/* sentence split into noun phrase and verb phrase */
+
+s --> np,vp.
+
+/* converting left recursive grammar np --> np,pp to non recursive grammar by standard transformation of using temporary 'npdash' */
+
+np --> pn,npdash.		/* Noun phrase could be a proper noun */
+np --> det,n,npdash.		/* Noun phrase could be common noun */
+npdash --> [].			/* Noun phrase is not recursive. Ends here */
+npdash --> pp,np,npdash.	/* Noun phrase is recursive. */
+
+
+/* converting left recursive grammar vp --> vp,pp to non recursive grammar by standard transformation of using temporary 'vpdash' */
+
+vp --> v,vpdash.             /* verb phrase */
+vp --> v,np,vpdash.          /* verb followed by noun phrase.E.g Mary loves Joe */
+vpdash --> [].               /* verb phrase is not recursive. Ends here */
+vpdash --> pp,np,vpdash.     /* parses phrases like, "walks to the park" => preposition + noun phrase */ 
+vpdash --> pp,vp,vpdash.     /* verb phrase is recursive. parses phrases like, "tries to get nobel prize"     => infinitive form. */
+ 
+det --> [the].
+det --> [a].
+det --> [every].
+det --> [each].
+det --> [an].
+det --> [all].
+
+n --> [man].
+n --> [woman].
+n --> [park].
+n --> [telescope].
+pn --> [mary].
+pn --> [john].
+pn --> [rohit].
+
+v --> [loves].
+v --> [likes].
+v --> [walks].
+v --> [saw].
+v --> [walk].
+v --> [like].
+v --> [is].
+v --> [get].
+
+pp --> [to].
+pp --> [with].
+pp --> [in].
+pp --> [from].
+pp --> [at].
+pp --> [on].
+pp --> [for].
+
+
+/* Sample runs: 
+| ?- s([a,man,walks,to,the,park],[]).
+
+yes
+| ?- s([the,man,in,the,park,likes,mary],[]).
+
+yes
+| ?- s([the,man,saw,a,woman,in,the,park,with,a,telescope],[]).
+
+yes
+| ?- s([the,man,in,the,park,with,a,telescope,walks],[]).
+
+yes
+| ?- s([the,man,walks,in,the,park,with,a,telescope],[]).
+
+yes
+| ?- s([with,telescope,man],[]).
+
+no
+| ?- s([telescope,man,in],[]).
+
+no
+| ?- s([],[]).
+
+no
+| ?- np([mary],[]).
+
+yes
+| ?- vp([likes,to,walk],[]).
+
+yes
+
+*/
+
+
+
+/* parse tree for DCG */
+   /*
+        Constructing the parse tree. It basically uses the above mentioned grammar to parse. The idea is to 
+        branch out on every preposition that could make the sentence ambiguous and report different parsing 
+   */
+
+s(s(NP,VP)) --> np(NP),vp(VP).
+
+np(np(P,Q)) --> pn(P), npdash(Q).
+np(np(P,Q,R)) --> det(P),n(Q),npdash(R).
+npdash(npdash([])) --> [].
+npdash(npdash(P,Q,R)) --> pp(P),np(Q),npdash(R).
+
+vp(vp(P,Q)) --> v(P),vpdash(Q).
+vp(vp(P,Q,R)) --> v(P),np(Q),vpdash(R).
+vpdash(vpdash([])) --> [].
+vpdash(vpdash(P,Q,R)) --> pp(P),np(Q),vpdash(R).
+vpdash(vpdash(P,Q,R)) --> pp(P),vp(Q),vpdash(R).
+
+v(v(likes)) --> [likes].
+v(v(loves))  --> [loves].
+v(v(saw)) --> [saw].
+v(v(walks)) --> [walks].
+v(v(like)) --> [like].
+v(v(walk)) --> [walk].
+v(v(is)) --> [is].
+
+pp(pp(to)) --> [to].
+pp(pp(with)) --> [with].
+pp(pp(in)) --> [in].
+pp(pp(on)) --> [on].
+pp(pp(at)) --> [at].
+pp(pp(from)) --> [from].
+pp(pp(for)) --> [for].
+
+det(det(the)) --> [the].
+det(det(a)) --> [a].
+det(det(every)) --> [every].
+det(det(all)) --> [all].
+det(det(an)) --> [an].
+det(det(each)) --> [each].
+
+n(n(man)) --> [man].
+n(n(woman)) --> [woman].
+n(n(park)) --> [park].
+n(n(telescope)) --> [telescope].
+pn(pn(mary)) --> [mary].
+pn(pn(john)) --> [john].
+pn(pn(rohit)) --> [rohit].
+
+
+/* sample runs and discussion :
+
+Run 1:
+| ?- s(P,[a,man,walks,to,the,park],[]).
+
+P = s(np(det(a),n(man),npdash([])),vp(v(walks),vpdash(pp(to),np(det(the),n(park),npdash([])),vpdash([]))));
+no
+
+There is only one parsing, since the sentence in not ambiguous.
+
+Run 2:
+| ?- s(P,[the,man,in,the,park,likes,mary],[]).
+
+P = s(np(det(the),n(man),npdash(pp(in),np(det(the),n(park),npdash([])),npdash([]))),vp(v(likes),np(pn(mary),npdash([])),vpdash([])));
+no
+
+Here only the man likes mary, hence only one parsing.
+
+Run 3:
+
+| ?-  s(P,[the,man,saw,a,woman,in,the,park,with,a,telescope],[]).
+
+P = s(np(det(the),n(man),npdash([])),vp(v(saw),np(det(a),n(woman),npdash([])),vpdash(pp(in),np(det(the),n(park),npdash([])),vpdash(pp(with),np(det(a),n(telescope),npdash([])),vpdash([])))));
+
+P = s(np(det(the),n(man),npdash([])),vp(v(saw),np(det(a),n(woman),npdash([])),vpdash(pp(in),np(det(the),n(park),npdash(pp(with),np(det(a),n(telescope),npdash([])),npdash([]))),vpdash([]))));
+
+P = s(np(det(the),n(man),npdash([])),vp(v(saw),np(det(a),n(woman),npdash(pp(in),np(det(the),n(park),npdash([])),npdash([]))),vpdash(pp(with),np(det(a),n(telescope),npdash([])),vpdash([]))));
+
+P = s(np(det(the),n(man),npdash([])),vp(v(saw),np(det(a),n(woman),npdash(pp(in),np(det(the),n(park),npdash([])),npdash(pp(with),np(det(a),n(telescope),npdash([])),npdash([])))),vpdash([])));
+
+P = s(np(det(the),n(man),npdash([])),vp(v(saw),np(det(a),n(woman),npdash(pp(in),np(det(the),n(park),npdash(pp(with),np(det(a),n(telescope),npdash([])),npdash([]))),npdash([]))),vpdash([])));
+no
+
+Here we see 5 parsings, This is because we can have 5 meaningful sentences created out of the input sentence
+1.  the man + saw a woman in the park + with a telescope  (man uses telescope to see a woman in the park)
+2.  the man + saw a woman + in the park with a telescope  (man sees a woman in a park that has a telescope)
+3.  the man + saw a woman in the park with a telescope    (man sees a woman in the park and she has a telescope)
+4.  the man saw a woman + in the park + with a telescope  (man is in the park and sees a woman using a telescope)
+5.  the man saw a woman + in the park with a telescope    (man is in the park, that has a telescope and he saw a woman).
+
+| ?- s(P,[the,man,in,the,park,with,a,telescope,walks],[]).
+
+P = s(np(det(the),n(man),npdash(pp(in),np(det(the),n(park),npdash([])),npdash(pp(with),np(det(a),n(telescope),npdash([])),npdash([])))),vp(v(walks),vpdash([])));
+
+P = s(np(det(the),n(man),npdash(pp(in),np(det(the),n(park),npdash(pp(with),np(det(a),n(telescope),npdash([])),npdash([]))),npdash([]))),vp(v(walks),vpdash([])));
+no
+
+Here we have two parsing because, Either man has the telescope or the park has telescope.
+
+
+| ?- s(P,[the,man,walks,in,the,park,with,a,telescope],[]).
+
+P = s(np(det(the),n(man),npdash([])),vp(v(walks),vpdash(pp(in),np(det(the),n(park),npdash([])),vpdash(pp(with),np(det(a),n(telescope),npdash([])),vpdash([])))));
+
+P = s(np(det(the),n(man),npdash([])),vp(v(walks),vpdash(pp(in),np(det(the),n(park),npdash(pp(with),np(det(a),n(telescope),npdash([])),npdash([]))),vpdash([]))));
+no
+
+Here also we have two parsings because, either man has telescope or park has telescope
+*/
+
+
+
+/*3. First order logic */
+
+/*
+        Evaluates an infix expression. Split recursively /\, \/ and 'not'.
+        If we get an atomic value, then look up the truth value from input and return.
+        I've statically specified truth table for AND, OR, NOT operations.
+*/
+
+
+member(Element,[Element|_List]).
+member(Element,[_First|Tail]) :- member(Element,Tail).
+
+eval_tv(A,B,TV) :-
+  eval(A,B,TV).                 
+
+/* An atomic variable in an expression. */
+eval(X,Truth,Val) :- atom(X), val(X,Truth,Val).
+
+/* expression of the form A /\ B */
+
+eval(A /\ B, Truth, Val) :-
+       eval(A, Truth, Valx),
+       eval(B, Truth, Valy),
+       aNd(Valx,Valy,Val).
+
+/* expression of the form A \/ B */
+
+eval(A \/ B,Truth, Val) :-
+       eval(A,Truth, Valx),
+       eval(B,Truth, Valy),
+       oR(Valx,Valy,Val).
+
+/* expression of the form not(A) */
+
+eval(not A,Truth, Val) :-
+       eval(A,Truth, Valx),
+       nOt(Valx,Val).
+
+/* fetches the truth value of variables */
+
+val(X,[X=Y|_T],Y).
+val(X,[S1=_Y|T],R) :- S1 \= X,val(X,T,R).
+
+
+/* defining boolean logic statically */
+
+aNd(false,false,false).
+aNd(false,true,false).
+aNd(true,false,false).
+aNd(true,true,true).
+oR(false,false,false).
+oR(false,true,true).
+oR(true,false,true).
+oR(true,true,true).
+nOt(false,true).
+nOt(true,false).
+
+/* Sample run:
+| ?- eval_tv((p /\ q \/ not(q \/ p)),[p=false,q=false],TV).
+
+TV = true;
+no
+
+| ?- eval_tv((p /\ q \/ not(q)),[p=false,q=true],TV).
+
+TV = false;
+no
+
+| ?- eval_tv((p \/ not(p)),[p=true],TV).
+
+TV = true;
+no
+
+*/
+
+
+/* 4. Extra Credit. Generating truth table */
+
+reverse([],[]).
+reverse([H1|T1],L2) :-
+  reverse(T1,R2),
+  append(R2,[H1],L2).
+
+append([],L2,L2).
+append([F1|T1],L2,[F1|L3]) :-
+  append(T1, L2, L3).
+
+/* 
+   1. get the variables from the expression
+   2. initialize them with 2 ^ N possible combination
+   3. Find the Truth Value for each combination and write.
+*/
+
+truth_table(Exp) :-
+   getVars(Exp, [], T),
+   reverse(T, Vars),
+   initialize(Vars,I),
+   write_helper(Exp,[I]).
+
+write_helper(Exp,[I|Irest]) :- write(I), write('                         '),
+                          eval_tv(Exp,I,Val),write(Val), nl,
+                          write_helper(Exp,Irest).
+
+/* initialize them with 2 ^ N possible combination */
+
+initialize([],[]).
+initialize([X|Vars], [X '=' false|S]) :- initialize(Vars,S).
+initialize([X|Vars], [X '=' true|S]) :- initialize(Vars,S).
+
+/* Extracting the variables out of the input expression and populating it in 'Out' list. */
+
+getVars(X,In,Out) :- atom(X), 
+                     (member(X,In) 
+                     -> Out = In
+                     ;Out = [X|In]).       
+getVars(X /\ Y,In,Out) :- getVars(X,In,Temp),
+                          getVars(Y,Temp,Out).
+getVars(X \/ Y,In,Out) :-  getVars(X,In,Temp),
+                              getVars(Y,Temp,Out).
+getVars(not X,In,Out) :-   getVars(X,In,Out).
+
+/* Sample run 
+
+| ?- truth_table(p /\ q).
+[p = false,q = false]                         false
+[p = false,q = true]                         false
+[p = true,q = false]                         false
+[p = true,q = true]                         true
+no
+
+| ?- truth_table(p \/ not(p)).
+[p = false]                         true
+[p = true]                         true
+no
+
+| ?- truth_table(p /\ q \/ r).
+[p = false,q = false,r = false]                         false
+[p = false,q = false,r = true]                         true
+[p = false,q = true,r = false]                         false
+[p = false,q = true,r = true]                         true
+[p = true,q = false,r = false]                         false
+[p = true,q = false,r = true]                         true
+[p = true,q = true,r = false]                         true
+[p = true,q = true,r = true]                         true
+no
+
+*/

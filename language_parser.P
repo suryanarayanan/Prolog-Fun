@@ -1,0 +1,100 @@
+/*Author :    Suryanarayanan Balasubramanian
+ */
+
+:-import scan_file/2 from scanner.
+:-import append/3 from basics.
+:-auto_table.
+
+parse_file(ProgramFile, AST) :-
+  scan_file(ProgramFile, Length),
+  module(AST, 0, Length).
+
+/* DCG for the given language */
+
+/* module body */
+module(module(ident(Name), BlockAST)) --> ['MODULE'],[ident(Name)], [';'], block(BlockAST), [ident(Name)],['.'].
+block(block(IdentifierListAST,StmtListAST)) --> declaration_sequence(IdentifierListAST), block_body(StmtListAST).
+
+/* block body */
+block_body([]) --> ['END'].
+block_body(X) --> ['BEGIN'],statement_sequence(X),['END'].
+
+/* variable declarations */
+declaration_sequence(X) --> declaration_sequence(A), declaration(B), {append(A,B,X)}.
+declaration_sequence([]) --> [].
+declaration(X) --> ['VAR'], variable_declaration_list(X),[';'].
+
+variable_declaration_list(X) --> variable_declaration(X).
+variable_declaration_list(X) --> variable_declaration(A), variable_declaration_list(B), {append(A,B,X)}.
+variable_declaration(X) --> identifier_list(X),[':'], type.
+
+/* list of identifiers */
+
+identifier_list([ident(X)]) --> [ident(X)].
+identifier_list([ident(X)|Y]) --> [ident(X)],[','],identifier_list(Y).
+
+/* set of statements */
+statement_sequence([X|Y]) --> statement(X),statement_sequence(Y).
+statement_sequence([]) --> [].
+
+statement(X) --> assignment_statement(X),[';'].
+statement(X) --> if_statement(X),[';'].
+statement(X) --> while_statement(X), [';'].
+statement(X) --> print_statement(X), [';'].
+
+/* different kinds of statements */
+assignment_statement(assign(ident(Var),ExprAST)) --> [ident(Var)],[':'],['='],expression(ExprAST).
+if_statement(if(ExprAST,ThenStmtAST,ElseStmtAST)) --> ['IF'],expression(ExprAST),['THEN'],statement_sequence(ThenStmtAST),['ELSE'],statement_sequence(ElseStmtAST),['END'].
+while_statement(while(ExprAST,DoStmtAST)) --> ['WHILE'], expression(ExprAST), ['DO'], statement_sequence(DoStmtAST), ['END'].
+print_statement(print(ExtrAST)) --> ['PRINT'], ['('], expression(ExtrAST), [')'].
+
+type --> ['INT'].
+
+expression(Y(X,Z)) --> simple_expression(X),relop(Y),simple_expression(Z).
+expression(X) --> simple_expression(X).
+
+/* operators */
+relop(<) --> ['<'].
+relop(>) --> ['>'].
+relop(=) --> ['='].
+
+simple_expression(Y(X,Z)) --> simple_expression(X), addop(Y), term(Z).
+simple_expression(X) --> term(X).
+
+addop(+) --> ['+'].
+addop(-) --> ['-'].
+term(Y(X,Z)) --> term(X),mulop(Y),primary(Z).
+term(X) --> primary(X).
+mulop(*) --> ['*'].
+mulop(/) --> ['/'].
+
+primary(ident(X)) --> [ident(X)].
+primary(int(X)) --> [int(X)].
+primary(X) --> ['('],simple_expression(X),[')'].
+
+/* Test runs:
+
+Input file 1: asg6test1.m3
+parse_file('./modula3/asg6test1.m3', AST).
+AST = module(ident(Main),block([],[print(int(1))]));
+
+Input file 2: asg6test2.m3
+parse_file('./modula3/asg6test2.m3', AST).
+AST = module(ident(Main),block([ident(x),ident(y)],[assign(ident(x),int(3)),print(ident(x)),print(ident(y)),assign(ident(y),ident(x)),print(ident(y))]))
+
+Input file 3: asg6test3.m3
+parse_file('./modula3/asg6test3.m3',AST). 
+AST = module(ident(Main),block([ident(x)],[assign(ident(x),int(10)),if(>(ident(x),int(8)),[assign(ident(x),int(3))],[assign(ident(x),int(6))]),print(ident(x))]))
+
+Input file 4: asg6test4.m3
+parse_file('./modula3/asg6test4.m3', AST).
+AST = module(ident(Main),block([ident(x),ident(y),ident(exp)],[assign(ident(x),int(6)),assign(ident(y),int(2)),assign(ident(exp),int(1)),while(>(ident(x),int(0)),[assign(ident(exp),*(ident(exp),ident(y))),assign(ident(x),-(ident(x),int(1)))]),print(ident(exp))]));
+
+Input file 5: asg6test5.m3
+parse_file('./modula3/asg6test5.m3', AST).
+AST = module(ident(Factorial),block([ident(x),ident(fact)],[assign(ident(x),int(6)),print(ident(x)),assign(ident(fact),int(1)),while(>(ident(x),int(0)),[assign(ident(fact),*(ident(fact),ident(x))),assign(ident(x),-(ident(x),int(1)))]),print(ident(fact))]))
+
+
+
+interpM3(while(>(ident(x),int(0)),[assign(ident(x),-(ident(x),int(1))),print(ident(x))]),[x=0],T).
+*/

@@ -1,0 +1,141 @@
+% convert list of ascii chars into list of words
+
+:- export scan_file/2.
+
+:- import expand_filename/2 from machine.
+:- import tphrase_set_string/1, tphrase_string_length/1 from dcg.
+
+scan_file(Filename,Length) :-
+	(atom(Filename)
+	 ->	expand_filename(Filename,Afile),
+		seeing(Ofile),
+		see(Afile),
+		file_to_string(String,[]),
+		seen,
+		see(Ofile),
+		set_string(String,Length)
+	 ;	writeln('Error in file name.'),
+		writeln('Did you forget to put single quotes around the filename?')
+	).
+
+file_to_string(Li,Lo) :-
+	get0(C),
+	(C < 0	% end-of-file
+	 ->	Li = Lo
+	 ;	Li = [C|Lm],
+		file_to_string(Lm,Lo)
+	).
+
+set_string(String,Length) :-
+	abolish_all_tables,
+	scan(String,[],Words,[]),
+	tphrase_set_string(Words),
+	tphrase_string_length(Length).
+
+scan([],[],W,W) :- !.
+scan([C|S0],S,W0,W) :- 
+	white_space(C)
+	 ->	scan(S0,S,W0,W)
+	 ; (C =:= 0'/, S0 = [0'*|_])
+	 ->	scan_comment(S0,S1),
+		scan(S1,S,W0,W)
+	 ; (C =:= 0'/, S0 = [0'/|S2])
+	 ->	skip_to_eol(S2,S3),
+		scan(S3,S,W0,W)
+	 ; C =:= 0''	% quoted string
+	 ->	scan_string(S0,S1,Ws,[]),
+		atom_codes(Wo,Ws), W0 = [string(Wo)|W1],
+		scan(S1,S,W1,W)
+	 ; (C >= 0'A, C =< 0'Z ; C >= 0'a, C =< 0'z ; C=:= 0'')
+	 ->	scan_ident(S0,S1,Ws,[]), 
+		atom_codes(Wo,[C|Ws]), 
+		(keyword(Wo)
+		 ->	Tok = Wo
+		 ;	Tok = ident(Wo)
+		),
+		W0 = [Tok|W1],
+		scan(S1,S,W1,W)
+	 ; (C>=0'0, C=<0'9)
+	 ->	scan_num(S0,S1,Ws,[]),
+		number_codes(Wo,[C|Ws]), W0 = [int(Wo)|W1],
+		scan(S1,S,W1,W)
+	 ;	atom_codes(Wo,[C]), W0=[Wo|W1], scan(S0,S,W1,W).
+
+white_space(0' ).
+white_space(9).		% tab
+white_space(10).	% linefeed
+white_space(13).	% cr
+
+skip_to_eol([C|L0],L) :- C == 10 -> L = L0 ; skip_to_eol(L0,L).
+
+scan_ident([],[],W,W) :- !.
+scan_ident([C|Cs0],Cs,[C|Wcs0],Wcs) :-
+	(C >= 0'A, C =< 0'Z ; C >= 0'a, C =< 0'z ; C=:= 0''
+	 ; C >= 0'0, C =< 0'9 ; C =:= 0'_ ),
+	!,
+	scan_ident(Cs0,Cs,Wcs0,Wcs).
+scan_ident(Cs,Cs,Wcs,Wcs).
+
+scan_num([],[],W,W) :- !.
+scan_num([C|Cs0],Cs,[C|Wcs0],Wcs) :-
+	C >= 0'0, C=<0'9, !,
+	scan_num(Cs0,Cs,Wcs0,Wcs).
+scan_num(Cs,Cs,Wcs,Wcs).
+
+scan_string([],[],W,W) :- !.
+scan_string([C|Cs0],Cs,[C|Wcs0],Wcs) :-
+	C =\= 0'', !,
+	scan_string(Cs0,Cs,Wcs0,Wcs).
+scan_string([0''|Cs],Cs,Wcs,Wcs).
+
+scan_comment([],[]) :- !.
+scan_comment([0'*,0'/|Cs0],Cs0) :- !.
+scan_comment([_|Cs0],Cs) :- 
+	scan_comment(Cs0,Cs).
+
+% Pascal keywords
+
+keyword('MODULE').
+keyword('BEGIN').
+keyword('END').
+keyword('VAR').
+keyword('PROCEDURE').
+keyword('IF').
+keyword('THEN').
+keyword('ELSE').
+keyword('WHILE').
+keyword('DO').
+keyword('INT').
+keyword('PRINT').
+keyword('DUMP').
+
+
+end_of_file.
+
+% Java (decaf) keywords
+
+keyword(class).
+keyword(extends).
+keyword(void).
+keyword(if).
+keyword(else).
+keyword(while).
+keyword(this).
+keyword(for).
+keyword(new).
+keyword(super).
+keyword(true).
+keyword(false).
+keyword(null).
+keyword(public).
+keyword(private).
+keyword(protected).
+keyword(static).
+keyword(final).
+keyword(int).
+keyword(float).
+keyword(boolean).
+keyword(return).
+keyword(break).
+keyword(continue).
+

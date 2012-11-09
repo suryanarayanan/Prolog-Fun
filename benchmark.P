@@ -1,0 +1,330 @@
+/*
+  Author:      Suryanarayanan Balasubramanian
+*/
+:-dynamic size/1.
+
+/* 1. cycle, tree and dline predicates */
+
+cycle(A,B) :-
+  size(M),
+  A =< M,
+  A >= 0,
+  B is ((A + 1) mod (M+1)).
+
+
+tree(A,B) :-
+  B is (2*A+1),
+  size(M),
+  A < M,
+  A >= 0.
+
+tree(A,B) :-
+  B is (2*A+2),
+  size(M),
+  A < M,
+  A >= 0.
+
+dline(A,B) :-
+  B is A+1,
+  size(M),
+  A < M,
+  A >= 0,
+  A mod 4 =:= 0.
+
+dline(A,B) :-
+  B is A+2,
+  size(M),
+  A < M,
+  A >= 0,
+  A mod 4 =:= 0.
+
+dline(A,B) :-
+  I is A-1,           
+  B is I+4,
+  size(M),
+  I < M,
+  I >= 0,
+  I mod 4 =:= 0.
+
+dline(A,B) :-
+  I is A-2,
+  B is I+4,
+  size(M),
+  I < M,
+  I >= 0,
+  I mod 4 =:= 0.
+
+/* 2. Tabling of cycle, tree, dline */
+
+:-table tc_cycle_rr/2.
+:-table tc_cycle_lr/2.
+:-table tc_cycle_dr/2.
+:-table tc_tree_lr/2.
+:-table tc_dline_lr/2.
+:-table tc_tree_rr/2.
+:-table tc_dline_rr/2.
+
+/* right recursive cycle */
+tc_cycle_rr(X,Y) :- 
+  cycle(X,Y).
+tc_cycle_rr(X,Y) :-
+  cycle(X,Z),
+  tc_cycle_rr(Z,Y).
+
+/* left recursive cycle */
+tc_cycle_lr(X,Y) :-
+  cycle(X,Y).
+tc_cycle_lr(X,Y) :-
+  tc_cycle_lr(X,Z),
+  cycle(Z,Y).
+
+/* double recursive cycle */
+tc_cycle_dr(X,Y) :-
+  cycle(X,Y).
+tc_cycle_dr(X,Y) :-
+  tc_cycle_dr(X,Z),
+  tc_cycle_dr(Z,Y).
+
+/* right recursive tree */
+tc_tree_rr(X,Y) :- 
+  tree(X,Y).
+tc_tree_rr(X,Y) :-
+  tree(X,Z),
+  tc_tree_rr(Z,Y).
+
+/* left recursive tree */
+tc_tree_lr(X,Y) :-
+  tree(X,Y).
+tc_tree_lr(X,Y) :-
+  tc_tree_lr(X,Z),
+  tree(Z,Y).
+
+/* right recursive dline */
+tc_dline_rr(X,Y) :-
+  dline(X,Y).
+tc_dline_rr(X,Y) :-
+  dline(X,Z),
+  tc_dline_rr(Z,Y).
+
+/* left recursive dline */
+tc_dline_lr(X,Y) :-
+  dline(X,Y).
+tc_dline_lr(X,Y) :-
+  tc_dline_lr(X,Z),
+  dline(Z,Y).
+
+/* Boiler plate */
+
+/* A helper function that calculates power of 2 */
+
+power(0,1).
+power(X,Y) :-
+  X > 0,
+  X1 is X-1,
+  power(X1, Y1),
+  Y is 2*Y1.
+  
+:-import for/3 from basics.
+
+test(Goal,M) :-
+	for(I,0,10),		% for I=0 to 10
+    	power(I,TWO),       % get 2 ^ I
+	NM is TWO*M,        % calculate M * (2 ^ I)
+	abolish_all_tables,	% clear all tables
+	retractall(size(_)),% clear old size
+	assert(size(NM)),	% set new size for base predicate
+	cputime(T0a),		% find cputime from start
+	(call(Goal),fail;true),	% do the query, all answers
+	cputime(T1a),
+	Timea is T1a-T0a,
+	writeln([Goal,NM,Timea]), % write out goal, size, and cputime
+	fail.
+
+/* Benchmarking Table:
+
+The equation I've used to produce M : M * 2 ^ I where 0 <= I < 10, M=25
+
+graph          tabled   M1     M2     M3     M4     M5     M6     M7      M8    M9      M10
+                        25     50     100    200    400    800    1600    3200  6400    12800
+--------------------------------------------------------------------------------------------
+tc_cycle_rr/2    Y      0.0040 0.0000 0.0040 0.0040 0.0160 0.0800 0.3160 1.4280 7.1000  TO
+tc_cycle_lr/2    Y      0.0000 0.0000 0.0000 0.0000 0.0000 0.0000 0.0000 0.0040 0.0040  0.0000
+tc_cycle_dr/2    Y      0.0040 0.0160 0.0680 0.5680 4.5480 36.0140 TO    TO     TO      TO
+
+tc_tree_rr/2     N      0.0000 0.0000 0.0000 0.0000 0.0000 0.0040 0.0080 0.0120 0.0120 0.0200
+
+tc_tree_rr/2     Y      0.0000 0.0000 0.0000 0.0040 0.0040 0.0120 0.0080 0.0160 0.0200 0.0440
+tc_tree_lr/2     Y      0.0000 0.0000 0.0000 0.0000 0.0000 0.0000 0.0040 0.0080 0.0040 0.0080
+
+tc_dline_rr/2    N      0.0040 0.0520 TO     TO     TO     TO     TO     TO     TO     TO
+
+tc_dline_rr/2    Y      0.0000 0.0000 0.0040 0.0040 0.0160 0.0240 0.0840 0.3760 1.7160 7.2160
+tc_dline_lr/2    Y      0.0000 0.0000 0.0000 0.0000 0.0000 0.0040 0.0040 0.0800 0.0040 0.0120   
+
+
+Observation:
+All the left recursive functions with tabling are linear. So, It is the most efficient way.
+right recursive cycle and doubly recursive cycle is quadradic in complexity. The later being cubic in size.
+As we can see right recursive for tree with tabling is quadradic in complexity. Even it is quadradic without tabling for tree.
+right recursive dline is quadradic with tabling and it is exponential without tabling since it uses backtracking on every choice point.
+
+*/
+
+
+/* test runs 
+
+| ?- size(M).
+M = 8;
+
+| ?- tc_cycle_rr(0,X).
+X = 0;
+X = 1;
+X = 2;
+X = 3;
+X = 4;
+X = 5;
+X = 6;
+X = 7;
+X = 8;
+no
+
+| ?- size(M).
+M = 4;
+no
+
+| ?- tc_tree_lr(0,X).
+X = 8;
+X = 7;
+X = 6;
+X = 5;
+X = 4;
+X = 3;
+X = 2;
+X = 1;
+no
+
+| ?- tc_tree_lr(1,X).
+X = 8;
+X = 7;
+X = 4;
+X = 3;
+no
+
+| ?- size(M).
+M = 10;
+
+tc_dline_lr(0,X).
+X = 1;
+X = 2;
+X = 4;
+X = 5;
+X = 6;
+X = 8;
+X = 9;
+X = 10;
+X = 12;
+no
+
+| ?- test(tc_cycle_rr(0,X),25).
+[tc_cycle_rr(0,_h175),25,0.0040]
+[tc_cycle_rr(0,_h175),50,0.0000]
+[tc_cycle_rr(0,_h175),100,0.0040]
+[tc_cycle_rr(0,_h175),200,0.0040]
+[tc_cycle_rr(0,_h175),400,0.0160]
+[tc_cycle_rr(0,_h175),800,0.0800]
+[tc_cycle_rr(0,_h175),1600,0.3160]
+[tc_cycle_rr(0,_h175),3200,1.4280]
+[tc_cycle_rr(0,_h175),6400,7.1000]
+
+| ?- test(tc_cycle_lr(0,X),25).
+[tc_cycle_lr(0,_h175),25,0.0000]
+[tc_cycle_lr(0,_h175),50,0.0000]
+[tc_cycle_lr(0,_h175),100,0.0000]
+[tc_cycle_lr(0,_h175),200,0.0000]
+[tc_cycle_lr(0,_h175),400,0.0000]
+[tc_cycle_lr(0,_h175),800,0.0000]
+[tc_cycle_lr(0,_h175),1600,0.0000]
+[tc_cycle_lr(0,_h175),3200,0.0040]
+[tc_cycle_lr(0,_h175),6400,0.0040]
+[tc_cycle_lr(0,_h175),12800,0.0000]
+[tc_cycle_lr(0,_h175),25600,0.0040]
+
+| ?- test(tc_cycle_dr(0,X),25).
+[tc_cycle_dr(0,_h175),25,0.0040]
+[tc_cycle_dr(0,_h175),50,0.0160]
+[tc_cycle_dr(0,_h175),100,0.0680]
+[tc_cycle_dr(0,_h175),200,0.5680]
+[tc_cycle_dr(0,_h175),400,4.5480]
+[tc_cycle_dr(0,_h175),800,36.0140]
+
+| ?- test(tc_tree_rr(0,X),25).
+[tc_tree_rr(0,_h175),25,0.0000]
+[tc_tree_rr(0,_h175),50,0.0000]
+[tc_tree_rr(0,_h175),100,0.0000]
+[tc_tree_rr(0,_h175),200,0.0040]
+[tc_tree_rr(0,_h175),400,0.0040]
+[tc_tree_rr(0,_h175),800,0.0120]
+[tc_tree_rr(0,_h175),1600,0.0080]
+[tc_tree_rr(0,_h175),3200,0.0160]
+[tc_tree_rr(0,_h175),6400,0.0200]
+[tc_tree_rr(0,_h175),12800,0.0440]
+[tc_tree_rr(0,_h175),25600,0.1240]
+
+| ?- test(tc_tree_lr(0,X),25).
+[tc_tree_lr(0,_h175),25,0.0000]
+[tc_tree_lr(0,_h175),50,0.0000]
+[tc_tree_lr(0,_h175),100,0.0000]
+[tc_tree_lr(0,_h175),200,0.0000]
+[tc_tree_lr(0,_h175),400,0.0000]
+[tc_tree_lr(0,_h175),800,0.0040]
+[tc_tree_lr(0,_h175),1600,0.0040]
+[tc_tree_lr(0,_h175),3200,0.0080]
+[tc_tree_lr(0,_h175),6400,0.0040]
+[tc_tree_lr(0,_h175),12800,0.0080]
+[tc_tree_lr(0,_h175),25600,0.0120]
+
+| ?- test(tc_dline_rr(0,X),25).
+[tc_dline_rr(0,_h175),25,0.0000]
+[tc_dline_rr(0,_h175),50,0.0000]
+[tc_dline_rr(0,_h175),100,0.0040]
+[tc_dline_rr(0,_h175),200,0.0040]
+[tc_dline_rr(0,_h175),400,0.0160]
+[tc_dline_rr(0,_h175),800,0.0240]
+[tc_dline_rr(0,_h175),1600,0.0840]
+[tc_dline_rr(0,_h175),3200,0.3760]
+[tc_dline_rr(0,_h175),6400,1.7160]
+[tc_dline_rr(0,_h175),12800,7.2160]
+
+| ?- test(tc_dline_lr(0,X),25).
+[tc_dline_lr(0,_h175),25,0.0000]
+[tc_dline_lr(0,_h175),50,0.0000]
+[tc_dline_lr(0,_h175),100,0.0000]
+[tc_dline_lr(0,_h175),200,0.0000]
+[tc_dline_lr(0,_h175),400,0.0000]
+[tc_dline_lr(0,_h175),800,0.0040]
+[tc_dline_lr(0,_h175),1600,0.0040]
+[tc_dline_lr(0,_h175),3200,0.0080]
+[tc_dline_lr(0,_h175),6400,0.0040]
+[tc_dline_lr(0,_h175),12800,0.0120]
+[tc_dline_lr(0,_h175),25600,0.0200]
+
+without tabling
+
+| ?- test(tc_tree_rr(0,X),25).
+[tc_tree_rr(0,_h175),25,0.0000]
+[tc_tree_rr(0,_h175),50,0.0000]
+[tc_tree_rr(0,_h175),100,0.0000]
+[tc_tree_rr(0,_h175),200,0.0000]
+[tc_tree_rr(0,_h175),400,0.0000]
+[tc_tree_rr(0,_h175),800,0.0040]
+[tc_tree_rr(0,_h175),1600,0.0080]
+[tc_tree_rr(0,_h175),3200,0.0120]
+[tc_tree_rr(0,_h175),6400,0.0120]
+[tc_tree_rr(0,_h175),12800,0.0200]
+[tc_tree_rr(0,_h175),25600,0.0280]
+
+| ?- test(tc_dline_rr(0,X),25).
+[tc_dline_rr(0,_h175),25,0.0040]
+[tc_dline_rr(0,_h175),50,0.0520]
+
+*/

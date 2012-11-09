@@ -1,0 +1,18 @@
+Play with Prolog
+----------------
+
+This project contains all my experimental codes written in Prolog. Prolog is a beautiful logic programming language. To think of anything in a recursive manner, prolog is one good place to start.
+
+DCG.P - Contains Context free grammars and Propositional Logic routines
+
+resolution.P - Contains Conjuntive normal forms and resolution logic
+
+first_order.P - first order formula and parsing.
+
+benchmark.P - Contains code that benchmarks the performance of left, right and double recursive predicates
+
+language_parser.P - A tiny compiler for a sample programming language with given syntax
+
+language_eval.P - A tiny interpreter for a sample programming language with restricted functionalities
+
+stratify.P - Code does stratification on the given list of predicates

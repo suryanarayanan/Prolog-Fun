@@ -1,0 +1,253 @@
+/*
+Author: 	Suryanarayanan Balasubramanian
+*/
+
+:-import append/3 from basics.
+:-import member/2 from basics.
+
+
+/* Main function entry point */
+
+/*  
+    Algorithm - stratification/2:
+
+    1. It reads the input file and populate rules. 
+    2. Get the predicate heads in a list.
+    3. Calls Stratify to stratify initial list.
+    4. If the level mapping value is greater than number of predicates, report error and quit.
+       else call 'iterate', which itereatively stratifies the predicates.
+    5. The Output list from 'iterate' is final stratified list.
+
+    Some points and discussions:
+         Throughout the lifetime of code we maintain the predicates level mapping list in the desired output format, which is "level(P,A,V)".
+         We are using cut operator in places where rule(X,Y) will repeatedly give outputs whereas all we need is just one valid rule which is not already added/evaluated.
+*/
+
+stratification(InputFile, LevelMapping) :-
+	read_file_to_rule(InputFile),       
+    getPredicateHeads([],Heads),
+    stratify_helper(Heads,L,[]),
+    listCount(Heads, Count),
+    isStratifiable(L, Count, MaxValue),
+    (MaxValue > Count
+    -> writeln('Stratification not possible!'),
+       false
+     ; 1=1
+    ),
+    iterate(L, Temp),
+    LevelMapping = Temp.
+
+/* Boiler plate to populate rule() */
+read_file_to_rule(FileName) :-  % must be full filename, including suffix
+	retractall(rule(_,_)),
+	see(FileName),
+	repeat,
+	read(Rule),
+	(Rule == end_of_file
+	 ->	!,
+		seen
+	 ; Rule = (Head:-Body)
+	 ->	assert(rule(Head,Body)),
+		fail
+	 ;	assert(rule(Rule,true)),
+		fail
+	).
+
+/* utility functions */
+
+/* delete an element from a list */
+delete(X,[Fi|Li],Lo) :-
+  Fi = X,
+  Li = Lo.
+delete(X,[Fi|Li],[Fo|Lo]) :-
+  Fi = Fo,
+  Fi \= X,
+delete(X,Li,Lo).
+
+
+/* Counting number of elements in a list */
+listCount([], Count) :-
+  Count is 0.
+listCount([_|L1T], Count) :-
+  listCount(L1T, RecCount),
+  Count is 1 + RecCount.
+
+
+/* Get a rule if it is not already present in list L */
+getRule(X, Y, L) :- 
+	rule(X,Y),
+	functor(X, P, A),
+	not(member(level(P,A,1),L)).
+
+
+/* Return the head predicates in a list */
+getPredicateHeads(L1, L2) :-
+	getRule(X, _, L1),!,
+	functor(X, P, A),
+	append([level(P,A,1)],L1, Temp),
+	getPredicateHeads(Temp, L2).
+
+/* L1 will be the final list */
+getPredicateHeads(L1,L2) :-
+    L2 = L1.                         
+
+/* Returns a list of predicate body elements of the form (Predicate, Arity) */
+/* Predicate body is in infix form (element1, element2) */
+getPredicateBody(Y,Temp, L) :-
+    Y = (A,B),
+    (A = (\+A1)
+    -> functor(A1, P, Arity),
+       append(Temp, [(\+P, Arity)], L1)
+    ;  functor(A, P, Arity),
+       append(Temp,[(P,Arity)], L1)
+    ),
+    getPredicateBody(B, L1, L).
+
+
+/* Base case to get the Predicate body */
+getPredicateBody(Y,Temp, L) :-
+    (Y = ('\+'Y1)
+    -> functor(Y1, P, A),
+       append(Temp, [(\+P, A)], L)
+     ; functor(Y, P, A),
+       append(Temp, [(P,A)], L)
+     ).
+
+/* Used to get the maximum value of all the body elements */
+isStratifiable(L, Count, MaxValue) :-
+    member(level(_,_,MaxValue), L),
+    MaxValue > Count,!.
+
+isStratifiable(_L, _Count, MaxValue) :-
+    MaxValue is -1.                     
+
+/* Adds to list if it is not present in the list */
+addtoList(E, L, Result) :-
+    E = level(P,A,_),
+    (member(E,L)
+    -> append([],L,Result)
+    ; append([level(P,A,1)],L, Result)
+    ).               
+
+
+/* just compares two lists and returns true if they are not same */
+isModified([H|T], L2) :-
+     (not(member(H,L2))
+     ->true
+     ; isModified(T,L2)
+     ).
+
+isModified([], _) :-
+    false.               
+
+/* Iterative stratification. Outputs the final level mapping of stratified version */
+iterate(L, Result) :-
+    listCount(L, Count),           
+    stratify_helper(L, Out, []),!,
+    (isModified(L, Out)
+    -> 
+       isStratifiable(Out, Count, MaxValue),
+       (MaxValue > Count
+       -> writeln('Stratification no possible'),
+          false     
+       ;iterate(Out, Result)
+       )
+    ; Result = Out
+    ).
+
+newRule(rule(X,Y), R) :-
+   rule(X,Y),                   
+   not(member(rule(X,Y),R)).
+                   
+/* stratifying every rules in rule(X,Y) and list R contains already evaluated rules recursively */
+
+stratify_helper(L1, L, R) :-
+    once(newRule(rule(X,Y), R)),
+    append([rule(X,Y)], R, R1),
+    functor(X, P, A),
+    getPredicateBody(Y, [], B),
+    resolveLevels([P,A], B, L1, L2),!,
+    stratify_helper(L2, L, R1).
+
+stratify_helper(L,L,_).
+
+/* Takes a Head predicate and corresponding Body list and calculates the resulting level mapping for head.
+   If Body element is a negation then,
+      If head element's level value is less than body element's value, the new head level value is body element's level + 1.
+   If Body element is a positive term,
+      If head element's level value is less than body element's value, we simply assign body element's level to head.
+*/
+
+resolveLevels([P,A], [(BP,BA)|T], In, Out) :-
+(BP = true
+    -> In = Out
+    ;
+    (BP = fail
+     -> In = Out
+     ;                    
+     member(level(P,A,MyLevel), In),
+     (BP = (\+BP1)
+     -> addtoList(level(BP1,BA,HisLevel), In, TempOut),
+        member(level(BP1,BA,HisLevel), TempOut),
+        (MyLevel > HisLevel
+        -> append([],TempOut,Temp)
+        ; delete(level(P,A,MyLevel), TempOut, TempI),
+          NewLevel is HisLevel +1,
+          append([level(P,A,NewLevel)],TempI,Temp)
+        )
+      ; addtoList(level(BP,BA,HisLevel), In, TempOut),
+        member(level(BP,BA,HisLevel), TempOut),
+        (MyLevel >= HisLevel          
+        -> append([],TempOut,Temp)
+        ; delete(level(P,A,MyLevel),TempOut, TempI),
+          append([level(P,A,HisLevel)],TempI,Temp)
+        )
+      ),!
+     )
+   ),
+   resolveLevels([P,A],T,Temp,Out).
+
+/* The input list is the resulting output in the end */
+resolveLevels(_,[],In,Out) :-
+     Out = In.
+
+/* test runs
+1. 
+p :- \+r.
+p(x) :- r.
+q :- r, \+s.
+r :- s.
+s.
+
+| ?- stratification('./test.P', L).
+L = [level(q,0,2),level(p,0,2),level(s,0,1),level(r,0,1),level(p,1,1)];
+no
+
+2. 
+a :- \+b.
+b :- \+a.
+| ?- stratification('./test1.P', L).
+Stratification not possible!
+
+3.
+bachelor(X):- male(X),\+ married(X).
+male(bill).
+male(jim).
+married(bill).
+married(mary).
+| ?- stratification('./test2.P', L).
+L = [level(bachelor,1,2),level(married,1,1),level(male,1,1)];
+no
+
+4.
+p :- q, \+r, s.
+q :- p.
+q :- s.
+r :- \+s, t.
+s.
+
+| ?- stratification('./test3.P', S).
+S = [level(q,0,3),level(p,0,3),level(t,0,1),level(r,0,2),level(s,0,1)];
+no
+
+*/
